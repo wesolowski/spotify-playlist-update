@@ -1,0 +1,4 @@
+/target
+.idea
+/spotify_cache
+.env
