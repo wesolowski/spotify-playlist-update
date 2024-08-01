@@ -5,7 +5,7 @@ use std::env;
 use std::fs;
 use std::io::stdin;
 use std::path::PathBuf;
-use rspotify::model::{PlayableId, SimplifiedPlaylist};
+use rspotify::model::{Country, Market, PlayableId, SearchResult, SearchType, SimplifiedPlaylist, TrackId};
 use url::Url;
 use webbrowser;
 use thiserror::Error;
@@ -21,10 +21,41 @@ pub enum SpotifyError {
     SpotifyApiError(#[from] rspotify::ClientError),
 }
 
+#[derive(Debug, Clone)]
+struct SongQuery {
+    artist: String,
+    title: String,
+}
+
+
+
 #[tokio::main]
 async fn main() {
     let spotify = get_spotify_client().await.unwrap();
 
+    let queries = [
+        SongQuery { artist: "Jess Glynne".to_string(), title: "Summer's Back".to_string() },
+        SongQuery { artist: "Sting".to_string(), title: "Desert Rose".to_string() },
+        SongQuery { artist: "Bletka".to_string(), title: "B012".to_string() },
+        // Add more SongQuery objects as needed
+    ];
+
+
+    let (song_results, not_found_queries) = search_songs(&spotify, &queries).await;
+
+    for (id, (name, artists)) in song_results {
+        println!("ID: {}, Name: {}, Artists: {}", id, name, artists);
+    }
+
+    if !not_found_queries.is_empty() {
+        println!("Songs not found:");
+        for query in not_found_queries {
+            println!("Artist: {}, Title: {}", query.artist, query.title);
+        }
+    }
+
+
+    return;
     let playlist_name = "RustTest";
     let playlist = get_playlist_by_name(&spotify, playlist_name).await.unwrap();
 
@@ -237,3 +268,36 @@ async fn handle_authorization_flow(spotify: &mut AuthCodeSpotify) -> Result<(), 
 
     Ok(())
 }
+
+
+async fn search_songs(spotify: &AuthCodeSpotify, queries: &[SongQuery]) -> (HashMap<TrackId<'static>, (String, String)>, Vec<SongQuery>) {
+    let mut results = HashMap::new();
+    let mut not_found = Vec::new();
+
+    for query in queries {
+        let search_query = format!("artist:{} track:{}", query.artist, query.title);
+        match spotify.search(&search_query, SearchType::Track, None, None, Some(1), None).await {
+            Ok(SearchResult::Tracks(tracks)) => {
+                if let Some(track) = tracks.items.first() {
+                    if let Some(track_id) = &track.id {
+                        results.insert(
+                            track_id.clone(),
+                            (track.name.clone(), track.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ")),
+                        );
+                    }
+                } else {
+                    not_found.push(query.clone());
+                }
+            },
+            Err(e) => {
+                not_found.push(query.clone());
+            },
+            _ => {
+                not_found.push(query.clone());
+            },
+        }
+    }
+
+    (results, not_found)
+}
+
