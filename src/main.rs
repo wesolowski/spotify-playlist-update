@@ -10,8 +10,9 @@ use url::Url;
 use webbrowser;
 use thiserror::Error;
 use dotenv::dotenv;
-use futures::stream::StreamExt;
 use rspotify::clients::BaseClient;
+use reqwest;
+use scraper::{Html, Selector};
 
 #[derive(Debug, Error)]
 pub enum SpotifyError {
@@ -31,19 +32,56 @@ struct SongQuery {
 
 #[tokio::main]
 async fn main() {
+
+    let url = "https://www.eska.pl/goraca20/";
+    let response = reqwest::get(url).await.unwrap().text().await.unwrap();
+
+    // HTML parsen
+    let document = Html::parse_document(&response);
+    let selector = Selector::parse("div.single-hit").unwrap();
+
+    let mut songs = Vec::new();
+
+    for element in document.select(&selector) {
+        let title_selector = Selector::parse("a.single-hit__title").unwrap();
+        let author_selector = Selector::parse("a.single-hit__author").unwrap();
+
+        let title = element
+            .select(&title_selector)
+            .next()
+            .map(|e| e.inner_html())
+            .unwrap_or_else(|| "".to_string());
+
+        let mut artist = element
+            .select(&author_selector)
+            .next()
+            .map(|e| e.inner_html())
+            .unwrap_or_else(|| "".to_string());
+
+        if !artist.is_empty() && !title.is_empty() {
+
+            artist = artist.replace("&amp;", "&");
+
+            let song = SongQuery { artist, title };
+            songs.push(song);
+        }
+    }
+
+    for song in &songs {
+        println!("{:?}", song);
+    }
+
+
     let spotify = get_spotify_client().await.unwrap();
 
-    let queries = [
-        SongQuery { artist: "Jess Glynne".to_string(), title: "Summer's Back".to_string() },
-        SongQuery { artist: "Sting".to_string(), title: "Desert Rose".to_string() },
-        SongQuery { artist: "Bletka".to_string(), title: "B012".to_string() },
-        // Add more SongQuery objects as needed
-    ];
 
 
-    let (song_results, not_found_queries) = search_songs(&spotify, &queries).await;
+    let (song_results, not_found_queries) = search_songs(&spotify, &songs).await;
 
 
+    // for (id, (name, artists)) in song_results {
+    //     println!("ID: {}, Name: {}, Artists: {}", id, name, artists);
+    // }
 
     if !not_found_queries.is_empty() {
         println!("Songs not found:");
@@ -53,34 +91,10 @@ async fn main() {
     }
 
 
-    let playlist_name = "RustTest";
+    let playlist_name = "Esk@ Gorąca Lista";
     let playlist = get_playlist_by_name(&spotify, playlist_name).await.unwrap();
 
-    let song_results_vec: Vec<_> = song_results.into_iter().collect();
 
-    for chunk in song_results_vec.chunks(50) {
-        let playable_ids: Vec<PlayableId> = chunk
-            .iter()
-            .filter_map(|(id, _)| Some(PlayableId::from(id.clone())))
-            .collect();
-
-        println!("Playable IDs batch size: {:?}", playable_ids.len());
-
-        let result = spotify
-            .playlist_add_items(
-                playlist.id.clone(),
-                playable_ids,
-                None,
-            )
-            .await;
-
-        match result {
-            Ok(response) => println!("Add tracks to playlist: {:?}", response),
-            Err(err) => eprintln!("Failed add tracks: {:?}", err),
-        }
-    }
-
-    return;
 
     println!("Playlist: {}", playlist.name);
 
@@ -147,6 +161,29 @@ async fn main() {
     }
 
 
+    for chunk in song_results.chunks(50) {
+        let playable_ids: Vec<PlayableId> = chunk
+            .iter()
+            .filter_map(|(id, _)| Some(PlayableId::from(id.clone())))
+            .collect();
+
+        println!("Playable IDs batch size: {:?}", playable_ids.len());
+
+        let result = spotify
+            .playlist_add_items(
+                playlist.id.clone(),
+                playable_ids,
+                None,
+            )
+            .await;
+
+        match result {
+            Ok(response) => println!("Add tracks to playlist: {:?}", response),
+            Err(err) => eprintln!("Failed add tracks: {:?}", err),
+        }
+    }
+
+    return;
 
 
 }
@@ -291,8 +328,8 @@ async fn handle_authorization_flow(spotify: &mut AuthCodeSpotify) -> Result<(), 
 }
 
 
-async fn search_songs(spotify: &AuthCodeSpotify, queries: &[SongQuery]) -> (HashMap<TrackId<'static>, (String, String)>, Vec<SongQuery>) {
-    let mut results = HashMap::new();
+async fn search_songs(spotify: &AuthCodeSpotify, queries: &[SongQuery]) -> (Vec<(TrackId<'static>, (String, String))>, Vec<SongQuery>) {
+    let mut results = Vec::new();
     let mut not_found = Vec::new();
 
     for query in queries {
@@ -301,16 +338,16 @@ async fn search_songs(spotify: &AuthCodeSpotify, queries: &[SongQuery]) -> (Hash
             Ok(SearchResult::Tracks(tracks)) => {
                 if let Some(track) = tracks.items.first() {
                     if let Some(track_id) = &track.id {
-                        results.insert(
+                        results.push((
                             track_id.clone(),
                             (track.name.clone(), track.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ")),
-                        );
+                        ));
                     }
                 } else {
                     not_found.push(query.clone());
                 }
             },
-            Err(e) => {
+            Err(..) => {
                 not_found.push(query.clone());
             },
             _ => {
@@ -321,4 +358,3 @@ async fn search_songs(spotify: &AuthCodeSpotify, queries: &[SongQuery]) -> (Hash
 
     (results, not_found)
 }
-
