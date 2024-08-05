@@ -1758,6 +1758,8 @@ dependencies = [
  "reqwest",
  "rspotify",
  "scraper",
+ "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "url",

@@ -2,3 +2,4 @@
 .idea
 /spotify_cache
 .env
+cache.json

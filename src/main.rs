@@ -3,9 +3,10 @@ use rspotify::prelude::OAuthClient;
 use rspotify::{scopes, AuthCodeSpotify, ClientError, Credentials, OAuth};
 use std::env;
 use std::fs;
-use std::io::stdin;
+use std::fs::File;
+use std::io::{BufReader, BufWriter, stdin};
 use std::path::PathBuf;
-use rspotify::model::{Country, Market, PlayableId, SearchResult, SearchType, SimplifiedPlaylist, TrackId};
+use rspotify::model::{PlayableId, SearchResult, SearchType, SimplifiedPlaylist, TrackId};
 use url::Url;
 use webbrowser;
 use thiserror::Error;
@@ -13,6 +14,12 @@ use dotenv::dotenv;
 use rspotify::clients::BaseClient;
 use reqwest;
 use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+struct Cache {
+    songs: HashMap<String, (TrackId<'static>, (String, String))>,
+}
 
 #[derive(Debug, Error)]
 pub enum SpotifyError {
@@ -91,7 +98,8 @@ async fn main() {
     }
 
 
-    let playlist_name = "Esk@ Gorąca Lista";
+    //let playlist_name = "Esk@ Gorąca Lista";
+    let playlist_name = "RustTest";
     let playlist = get_playlist_by_name(&spotify, playlist_name).await.unwrap();
 
 
@@ -327,34 +335,51 @@ async fn handle_authorization_flow(spotify: &mut AuthCodeSpotify) -> Result<(), 
     Ok(())
 }
 
-
 async fn search_songs(spotify: &AuthCodeSpotify, queries: &[SongQuery]) -> (Vec<(TrackId<'static>, (String, String))>, Vec<SongQuery>) {
     let mut results = Vec::new();
     let mut not_found = Vec::new();
 
+    let cache_file = "cache.json";
+    let cache: Cache = if let Ok(file) = File::open(cache_file) {
+        serde_json::from_reader(BufReader::new(file)).unwrap_or_else(|_| Cache { songs: HashMap::new() })
+    } else {
+        Cache { songs: HashMap::new() }
+    };
+
+    let mut updated_cache = cache.songs.clone();
+
     for query in queries {
         let search_query = format!("artist:{} track:{}", query.artist, query.title);
-        match spotify.search(&search_query, SearchType::Track, None, None, Some(1), None).await {
-            Ok(SearchResult::Tracks(tracks)) => {
-                if let Some(track) = tracks.items.first() {
-                    if let Some(track_id) = &track.id {
-                        results.push((
-                            track_id.clone(),
-                            (track.name.clone(), track.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ")),
-                        ));
+        if let Some(cached_result) = cache.songs.get(&search_query) {
+            results.push(cached_result.clone());
+        } else {
+            match spotify.search(&search_query, SearchType::Track, None, None, Some(1), None).await {
+                Ok(SearchResult::Tracks(tracks)) => {
+                    if let Some(track) = tracks.items.first() {
+                        if let Some(track_id) = &track.id {
+                            let result = (
+                                track_id.clone(),
+                                (track.name.clone(), track.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ")),
+                            );
+                            results.push(result.clone());
+                            updated_cache.insert(search_query.clone(), result);
+                        }
+                    } else {
+                        not_found.push(query.clone());
                     }
-                } else {
+                },
+                Err(..) => {
                     not_found.push(query.clone());
-                }
-            },
-            Err(..) => {
-                not_found.push(query.clone());
-            },
-            _ => {
-                not_found.push(query.clone());
-            },
+                },
+                _ => {
+                    not_found.push(query.clone());
+                },
+            }
         }
     }
+
+    let file = File::create(cache_file).unwrap();
+    serde_json::to_writer(BufWriter::new(file), &Cache { songs: updated_cache }).unwrap();
 
     (results, not_found)
 }
