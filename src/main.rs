@@ -43,9 +43,7 @@ async fn main() {
 
     let (song_results, not_found_queries) = search_songs(&spotify, &queries).await;
 
-    for (id, (name, artists)) in song_results {
-        println!("ID: {}, Name: {}, Artists: {}", id, name, artists);
-    }
+
 
     if !not_found_queries.is_empty() {
         println!("Songs not found:");
@@ -55,11 +53,34 @@ async fn main() {
     }
 
 
-    return;
     let playlist_name = "RustTest";
     let playlist = get_playlist_by_name(&spotify, playlist_name).await.unwrap();
 
+    let song_results_vec: Vec<_> = song_results.into_iter().collect();
 
+    for chunk in song_results_vec.chunks(50) {
+        let playable_ids: Vec<PlayableId> = chunk
+            .iter()
+            .filter_map(|(id, _)| Some(PlayableId::from(id.clone())))
+            .collect();
+
+        println!("Playable IDs batch size: {:?}", playable_ids.len());
+
+        let result = spotify
+            .playlist_add_items(
+                playlist.id.clone(),
+                playable_ids,
+                None,
+            )
+            .await;
+
+        match result {
+            Ok(response) => println!("Add tracks to playlist: {:?}", response),
+            Err(err) => eprintln!("Failed add tracks: {:?}", err),
+        }
+    }
+
+    return;
 
     println!("Playlist: {}", playlist.name);
 
