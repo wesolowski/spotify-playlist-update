@@ -97,9 +97,9 @@ async fn main() {
         }
     }
 
-
     //let playlist_name = "Esk@ Gorąca Lista";
-    let playlist_name = "RustTest";
+    let playlist_name = "Eska Gorąca";
+    //let playlist_name = "RustTest";
     let playlist = get_playlist_by_name(&spotify, playlist_name).await.unwrap();
 
 
@@ -192,8 +192,6 @@ async fn main() {
     }
 
     return;
-
-
 }
 
 async fn get_playlist_by_name(spotify: &AuthCodeSpotify, playlist_name: &str) -> Result<SimplifiedPlaylist, SpotifyError> {
