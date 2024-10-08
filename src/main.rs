@@ -47,8 +47,8 @@ async fn main() {
         }
     }
 
-    //let playlist_name = "Eska Gorąca";
-    let playlist_name = "RustTest";
+    let playlist_name = "Eska Gorąca";
+    //let playlist_name = "RustTest";
     let playlist = get_playlist_by_name(&spotify, playlist_name).await.unwrap();
 
     delete_all_songs(&spotify, &playlist).await;
