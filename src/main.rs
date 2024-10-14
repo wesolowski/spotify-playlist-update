@@ -45,6 +45,9 @@ async fn main() {
         for query in not_found_queries {
             println!("Artist: {}, Title: {}", query.artist, query.title);
         }
+        println!("----------");
+    } else {
+        println!("All songs had been found");
     }
 
     let playlist_name = "Eska Gorąca";

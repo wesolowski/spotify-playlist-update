@@ -16,7 +16,7 @@ pub async fn add_songs(spotify: AuthCodeSpotify, song_results: Vec<(TrackId<'sta
             .filter_map(|(id, _)| Some(PlayableId::from(id.clone())))
             .collect();
 
-        println!("Playable IDs batch size: {:?}", playable_ids.len());
+        println!("Number of songs added: {:?}", playable_ids.len());
 
         let result = spotify
             .playlist_add_items(
@@ -50,9 +50,6 @@ pub async fn delete_all_songs(spotify: &AuthCodeSpotify, playlist: &SimplifiedPl
                 match playable_item {
                     rspotify::model::PlayableItem::Track(track) => {
                         track_ids.push(track.id.clone());
-                        let track_name = track.id.unwrap();
-                        let album_name = track.name;
-                        println!("Track: {}, Album: {}", track_name, album_name);
                     },
                     _ => println!("Not a track"),
                 }
@@ -73,8 +70,6 @@ pub async fn delete_all_songs(spotify: &AuthCodeSpotify, playlist: &SimplifiedPl
             .filter_map(|id| id.clone())
             .map(|id| PlayableId::from(id))
             .collect();
-
-        println!("Playable IDs batch size: {:?}", playable_ids.len());
 
         let result = spotify
             .playlist_remove_all_occurrences_of_items(
